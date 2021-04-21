@@ -1,0 +1,58 @@
+---
+title: "Final Assignment"
+author: "Joel Strouts"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+---
+
+```{r Reading Data, echo=FALSE}
+
+## -------------------------------------------------------
+## complete source code for this document can be found at:
+## https://github.com/joelstrouts/PDS-week-9
+## -------------------------------------------------------
+
+## Reading Data
+## ============
+
+get_fpath <- 
+  {function (fname) paste("../resources/data-sets/", fname, sep="")}
+read_transpose_df <-
+  {function (fpath, ...) as.data.frame(t(read.table(fpath, ...)))}
+
+df_blood_samples_n <- read.table(get_fpath("normals.txt"), header = TRUE)
+df_blood_samples_c <- read.table(get_fpath("carriers.txt"), header = TRUE)
+df_human_phage_dna <- read.table(get_fpath("human-phage.txt"))
+
+```
+
+# Data set 1: Biomedical Data
+## Introduction
+## Data and Methods
+```{r Table test, echo=FALSE}
+knitr::kable(head(df_blood_samples_n))
+knitr::kable(head(df_blood_samples_c))
+```
+
+## Results
+## Conclusion
+
+# Data Set 2: DNA Data
+## Introduction
+## Data and Methods
+```{r Table test 2, echo=FALSE}
+knitr::kable(head(df_human_phage_dna))
+```
+
+## Results
+## Conclusion
+
+# Future Work
+
+\newpage
+
+# Appendix
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+## End of Document
+## ===============
+```
