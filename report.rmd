@@ -2,57 +2,172 @@
 title: "Final Assignment"
 author: "Joel Strouts"
 date: "`r format(Sys.time(), '%d %B %Y')`"
+urlcolor: "blue"
+header-includes:
+- \usepackage{booktabs}
+- \usepackage{longtable}
+- \usepackage{array}
+- \usepackage{multirow}
+- \usepackage{wrapfig}
+- \usepackage{float}
+- \usepackage{colortbl}
+- \usepackage{pdflscape}
+- \usepackage{tabu}
+- \usepackage{threeparttable}
+- \usepackage{hyperref}
+output:
+   bookdown::pdf_document2:
+     latex_engine: xelatex
+     fig_width: 10
+     fig_height: 10
+     fig_caption: true
 ---
 
-```{r Reading Data, echo=FALSE}
-
-## -------------------------------------------------------
-## complete source code for this document can be found at:
-## https://github.com/joelstrouts/PDS-week-9
-## -------------------------------------------------------
-
-## Reading Data
-## ============
-
-get_fpath <- 
-  {function (fname) paste("../resources/data-sets/", fname, sep="")}
-read_transpose_df <-
-  {function (fpath, ...) as.data.frame(t(read.table(fpath, ...)))}
-
-df_blood_samples_n <- read.table(get_fpath("normals.txt"), header = TRUE)
-df_blood_samples_c <- read.table(get_fpath("carriers.txt"), header = TRUE)
-df_human_phage_dna <- read.table(get_fpath("human-phage.txt"))
-
+```{r Initialising, echo=FALSE, eval=TRUE}
+source("./std.r")
+source("./report_code.r")
 ```
 
 # Data set 1: Biomedical Data
-## Introduction
+This analysis has been performed to identify a new screening procedure for carriers of a rare genetic disorder and to describe that procedure's effectiveness. 
+
 ## Data and Methods
-```{r Table test, echo=FALSE}
-knitr::kable(head(df_blood_samples_n))
-knitr::kable(head(df_blood_samples_c))
-```
+The data consists of 194 samples of which 67 are carriers of the disorder and the remaining 127 are not. Each sample has four measurements: `m1`, `m2`, `m3`, and `m4`. The current industry standard screening procedure uses the measurement `m1` only. In this analysis we investigate alternate approaches, first trying different classifiers on the data as-is then considering 
+
+Since the aim of this investigation is to compare the classification efficacy of the `m1` measurement against other methods, we begin by training a classifier using only the labelled `m1` data and then use this model as a baseline for comparison. We then applied the same classification method to each of the alternate measurement features and compared their results to those for `m1`.
+
+We chose to scale the data before performing our analysis to make each feature more individually comparable since we are dealing with only a small number (4) and otherwise they take very different ranges of values.
+
+Having no knowledge about the underlying distributions, we tried four classification algorithms on the single features and compared their results: naive Bayes (NB), linear discriminant analysis (LDA), logistic regression (LR), and random forests (RF). For each model we used the same set of 70:30 training/testing data and leave-one-out cross validation.
+
+Naive Bayes is a count-based method, LDA identifies the best hyperplanes for dividing classes of samples, LR is a transformed variant of linear regression where weights are learned iteratively, and RF models average the classification decisions of many decision trees over different subsets of the sample data (more detailed description provided in the appendix).
+
+We then considered the use of combinations of features for classification based on the most promising results from the previous investigation. 
 
 ## Results
+```{r model comparisons, echo=FALSE}
+xtable(
+    blood$tables$compare_model_accuracies(c("nb", "lda", "lr", "rf"), blood$mdls),
+    caption = "Model Classification Accuracy on Test Data as Trained on Pairs of Features",
+    booktabs = TRUE,
+    label = "tab:blood_single_features"
+) %>% std$xtable2kable() %>% kable_styling(position = "float_right")
+```
+The accuracy of the predictions made by each classifier on the labelled single features (`m1`, `m2`, `m3` & `m4`) are shown in \autoref{tab:blood_single_features}. These initial results support the established notion that the `m1` feature is a sensible choice for classifying the data, and `m4` performing second best on average. These results seem reasonable given the general distributions of classes for each measurement shown in \autoref{fig:blood_plot_overview}. In this plot we see that for measurements `m2` and `m3` the class distributions overlap more than they do for `m1` and `m4` -making observations from each class harder to distinguish using only these features.
+
+```{r boxplots, echo=FALSE, fig.cap="\\label{fig:blood_plot_overview}Boxplots and histograms of measurement values for each class", out.width="52%", fig.width=5, fig.height=5, fig.show='hold'}
+par(mar = c(4, 4, 1.5, 1.5))
+blood$plots$boxplots()
+blood$plots$class_histograms("same-scale")
+```
+
+Looking at the histogram for the `m4`measurement, a first guess at classifying this data could be to draw a linear decision boundary between the upper quartile of the normal group and the lower quartile of the carrier group, and the fact that the model which identifies a linear decision boundary (LDA) performs best on this measurement supports that intuition somewhat.
+
+Looking at the histograms for each measurement, class distributions can broadly be described as overlapping skew normal, in which case a linear decision boundary would be optimal for just one feature. For a combination of features other models may perform better however.
+
+This is what we investigated next and the results are shown in \autoref{tab:blood_feature_pairs}. Again we find that `m1` makes the greatest difference to the classification accuracy, with feature pairs including `m1` consistently out-performing the others. The best combination of features seems to be `m1_m2`, with a classification accuracy of `0.9` for the logistic regression model. For the models trained on feature pairs not including `m1` the most accurate was also the logistic regression model, for pair `m3_m4`. Comparing these classification results to the scatter plots in \autoref{fig:blood_feature_pair_scatters} showing the distribution classes for each pair, they seem plausible - the high `m1` measurements for many carriers make those points clearly distinguishable, but all combinations have separate regions dominated by normal samples and dominated by carrier samples respectively, with differing portions of overlap between. In therefore not surprising that the classifiers all have similar (between 0.71 & 0.90) accuracy scores.
+
+```{r blood data scatters, echo=FALSE, fig.cap="\\label{fig:blood_feature_pair_scatters}Scatter Plots for Pairs of Features, Coloured by Class", out.width="95%", fig.width=9, fig.height=6, fig.align="center"}
+xtable(
+    blood$tables$compare_model_accuracies(c("nb", "lda", "lr", "rf"), blood$mdls$ft_pairs),
+    caption = "Model Classification Accuracy on Test Data as Trained on Pairs of Features",
+    booktabs = TRUE,
+    label = "tab:blood_feature_pairs"
+) %>% std$xtable2kable() %>% kable_styling(position = 'center')
+
+blood$plots$pair_scatters()
+```
+
+After establishing these initial results we investigated possible biases we have reason to suspect exist in the supplied data. We investigate two possible factors: that the age of a person impacts their `m1`-`m4` measurements, and that the measurements made may systematically drift over time. A graph of measurement values (coloured according to classification) plotted against age of person tested, and month of measurement (since first measurement recorded) respectively, is shown in \autoref{fig:blood-age-date-scatters}. Linear trend lines have been imposed on these graphs with 95% confidence intervals to give a sense of the overall relationships between these factors. 
+
+```{r blood age-date scatters, echo=FALSE, fig.cap="\\label{fig:blood-age-date-scatters}Measurement Values Plotted Against Age & Date Respecitvely", fig.width=11, fig.height=6}
+blood$plots$month_age_scatters()
+```
+
+Regarding trends, we observe that `m1` and `m2` are generally somewhat higher for younger people, but no clear relationship between age and `m3` and `m4` is discernible. For month of measurement we observe a slight drift towards higher values for `m1` and `m4` over time, and no other clear trends. All of these observations are tentative as the data is few and scattered to draw firm conclusions.
+
+The most striking feature of these graphs, however, is actually the lack of any samples representing people over the age of 40 who are _not_ carriers of the condition. For anyone over this age, our predictions are less certain since we do not have representative samples from each class. To investigate the impact this had on our models we ran the same classifiers as before on a subset of the data containing only those ages with samples representing both classes (age < 40). The accuracy of these classifiers trained on a reduced data set are shown in \autoref{tab:blood-results-reduced}. The same overall patterns are present: `m1` and `m4` perform better than `m2` and `m3` as single features and pairs of features generally out-perform single features, but in each case the accuracy is an improvement on the models using the entire data set. The model with the highest accuracy is the random forest model trained on the combination of features `m3` and `m4`.
+
+```{r reduced blood data scatters, echo=FALSE, out.width="95%", fig.width=9, fig.height=6, fig.align="center"}
+xtable(
+    cbind(blood$tables$compare_model_accuracies(
+                           c("nb", "lda", "lr", "rf"),
+                           blood$mdls$red),
+          blood$tables$compare_model_accuracies(
+                           c("nb", "lda", "lr", "rf"),
+                           blood$mdls$red$ft_pairs)
+          ),
+    caption = "Model Classification Accuracy on \textit{Reduced} Test Data",
+    booktabs = TRUE,
+    label = "tab:blood-results-reduced"
+) %>% std$xtable2kable() %>% kable_styling(position = 'center')
+```
+
 ## Conclusion
+Using the whole data set without considering the effect of age, the best classification accuracy we achieved, using measurements other than `m1`, was `0.81` which is the same as the best classifier we tried on the single feature `m1` for this data. This result came from the logistic regression model trained on features `m3` and `m4`. Using only data which represented both carrier and non-carrier samples in each age group however, all classifiers performed better (including those based on `m1`) with each of naive Bayes', LDA, or logistic regression recording an accuracy of `0.84` based on measurement `m4`. For a combination of features, `m3` and `m4` used to train a random forest model returns an accuracy of `0.90`, the best result recorded. 
+
+Based on our analysis we suggest using the `m4` measurement as a replacement for `m1` if a complete replacement is needed or a combination of both if possible and we suggest using a logistic regression model to make these classifications.
+
+## Future Work
+Regarding the data, it is unbalanced across classes, does not represent each class across a breadth of ages, and the sample size is small. For all of these reasons we suggest the most effective method to increase the accuracy of the screening procedure would be to gather more data.
+
+Regarding the methods investigated in this report, we did not attempt to tune the parameters of any models discussed and did not investigate whether our models were overfitting, which is a concern given the small sample size. If we were to continue our analysis we would choose the best models tested here and tune their parameters and consider the data assumptions of those models in more detail to address overfitting concerns. We also did not investigate the relationships between age & date-of-measurement and recorded value beyond fitting linear trend lines and if these factors were better understood then a classifier which takes them into account could perform better.
 
 # Data Set 2: DNA Data
-## Introduction
+In this analysis we investigate methods for distinguishing between human and bacteriophages DNA sequences. Bacteriophages (or just _phages_) are viruses that infect bacteria and regulate populations in natural ecosystems. Phages invade the human body like other natural environments but it is currently not clear what impact they have on human health.
+
 ## Data and Methods
-```{r Table test 2, echo=FALSE}
-knitr::kable(head(df_human_phage_dna))
-```
+The data consists of 300 human DNA sequences and 300 phage DNA sequences. These sequences are each 100 items in length, and each item is one of the four bases: A, T, C, or G.
+
+The approach we took was to first train a random forest classifier on the complete, un-altered sequence data, and then to extract new features derived from those sequences and see if a random forest classifier trained on these new features could out-perform the original model. In both cases we split the data into 75/25 training/testing groups and used 5-fold cross validation on the training sets.
+
+The features we extracted from the original dataset were: the number of times each individual base appeared in a given sequence (how many As, how many Ts etc.), the number of times any pair of bases appeared alongside eachother (how many ATs, ACs, CGs, etc.), and how many times any combination of three appeared in a sequence (AAT, TCC, AGT, etc.). Finally we included features representing the longest consecutive runs of any single base occurring in a given sequence.
+
+After training an RF classifier on these derived features we investigated the features identified by the model as most important for classification.
 
 ## Results
+A PCA (principal component analysis) showing the general spread of the data as described by just the original sequences and compared to the data described by the derived features (counts of single bases, pairs of bases, and strings of three bases in a row) is shown in \autoref{fig:dna-pca-compare}. Clearly these extracted features help distinguish between the classes better than the unaltered sequences alone; for the unaltered sequences the classes overlap almost entirely along PC1 and PC2, whereas for the count based features the classes occupy distinct regions of PC1, PC2 space (though still show a portion of overlap). The results of the random forest classifiers are shown in \autoref{tab:dna-rfs}. 
+
+```{r dna-pca-compare, echo=FALSE, fig.width=12, fig.height=12, fig.cap="\\label{fig:dna-pca-compare}Comparison of Principal Component Analysis on Unaltered Data and Count Data Respectively."}
+dna$plots$pca_compare()
+```
+
+```{r dna-rfs-table, echo=FALSE}
+xtable(
+    dna$tables$rf_compare(),
+    caption = "RF Classification Accuracy on Unaltered Data and Count Respectively",
+    booktabs = TRUE,
+    label = "tab:dna-rfs"
+) %>% std$xtable2kable() %>% kable_styling(position = "float_right")
+```
+
+The RF classifier trained on the count data performed significantly better achieving a classification accuracy of 0.94.
+
+Finally we investigated the variables individually responsible for the most distinguishing between classes by looking at the variable importances identified by the RF model trained on the count data, and these results are shown in \autoref{fig:dna-rf-importance}. This identified the variable `CG_count` ans by far the most significant deciding factor in determining whether a DNA sequence belonged to the human or phage class. In fact, five out of the top six most important variables include a component of counting occurrences of `CG`: `ACG_count`, `GCG_count` etc.
+
+```{r dna-rfs-importance, echo=FALSE, fig.align="center", fig.cap="\\label{fig:dna-rf-importance}Variable Importance for Derived Count Variables"}
+dna$plots$rf_importance()
+```
+
 ## Conclusion
+We suggest using a random forest classifier trained on the top six most important extracted features shown in \autoref{fig:dna-rf-importance} to distinguish phage DNA sequences from human ones.
 
-# Future Work
-
-\newpage
+## Future Work
+We have not tuned any model parameters for the random forest models used, and we also have not tried training a model on solely the most important features identified by the RF model for count features. In addition, the 5-fold cross validation we used could be replaced with a more computationally demanding but stable method like leave-one-out cross validation (LOOCV).
 
 # Appendix
+## Naive Bayes
+Naive Bayes models work by discretising the data and creating a frequency table which counts how often an object belongs to a given class given it falls within each given range. The conditional probability that an object belongs to a class given it's feature values is then calculated with Bayes' formula using this frequency data, and the class with the highest conditional probability is selected.
 
-```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
-## End of Document
-## ===============
+## Linear Discriminant Analysis
+LDA works by empirically identifying the hyperplanes which best divide the data into separate classes.
+
+## Logistic Regression
+Binary Logistic Regression models work similarly to standard linear regression models except that the terms are transformed by a logistic function, the weights are fitted using gradient descent rather than being explicitly solved for, and they are used for binary classification rather than approximation.
+
+## Random Forests
+Random forest models work by bootstrapping the data and associating a decision tree with each bootstrap which chooses the of that subset of data. The final classification is then made by aggregating the votes of all the individual decision trees and choosing the class with the most votes.
+
+## Code
+```{r, code=xfun::read_utf8('./report_code.r'), echo=TRUE, eval=FALSE}
 ```
